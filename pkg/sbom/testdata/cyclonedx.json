@@ -1,0 +1,19 @@
+{
+    "bomFormat": "CycloneDX",
+    "specVersion": "1.4",
+    "components": [
+        {
+            "type": "library",
+            "name": "openssl",
+            "version": "3.0.2",
+            "purl": "pkg:deb/debian/openssl@3.0.2",
+            "licenses": [
+                {
+                    "license": {
+                        "id": "Apache-2.0"
+                    }
+                }
+            ]
+        }
+    ]
+}

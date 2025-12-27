@@ -1,0 +1,20 @@
+registries:
+  ghcr.io:
+    auth:
+      type: docker
+
+  registry.internal.company.com:
+    auth:
+      type: basic
+      username: ci-username
+      password: REGISTRY_PASSWORD
+
+  index.docker.io:
+    auth:
+      type: docker
+  
+
+  my.private.registry:5000:
+    auth: 
+      type: token
+      tokenEnv: PRIVATE_REGISTRY_TOKEN
