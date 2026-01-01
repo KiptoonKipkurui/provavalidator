@@ -7,6 +7,7 @@ import (
 	"os/exec"
 
 	"github.com/anchore/syft/syft"
+	_ "modernc.org/sqlite"
 )
 
 func generateSBOMForImage(ctx context.Context, imageRef string) (*ResolvedSBOM, error) {
