@@ -14,7 +14,7 @@
                 "--auth-config",
                 "configs/auth.example.yaml",
                 "--auth-debug",
-                "attest",
+                "vuln",
                 "ubuntu:latest"
             ]
         }
