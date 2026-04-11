@@ -68,7 +68,11 @@ func loadCorpusInputs(path string, args []string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		if cerr := file.Close(); err == nil && cerr != nil {
+			err = cerr
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -93,7 +97,11 @@ func writeCorpusOutput(result *research.CorpusResult, format, outputPath string)
 		if err != nil {
 			return err
 		}
-		defer file.Close()
+		defer func() {
+			if cerr := file.Close(); err == nil && cerr != nil {
+				err = cerr
+			}
+		}()
 		out = file
 	}
 
