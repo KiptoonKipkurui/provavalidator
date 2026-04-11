@@ -1,13 +1,40 @@
+notation:
+  # Option 1: point at a full Notation config root containing
+  # trustpolicy.json and truststore/
+  configDir: /path/to/notation
+
+  # Option 2: override individual paths if they live elsewhere
+  # trustPolicyPath: /path/to/notation/trustpolicy.json
+  # trustStorePath: /path/to/notation/truststore
+
+runtime:
+  tempDir: .cache/provavalidator/tmp
+  syftCacheDir: .cache/provavalidator/syft
+  cleanupTempOnSuccess: true
+
 registries:
   ghcr.io:
     auth:
-      type: docker
+      type: token_or_anonymous
+      tokenEnv: GHCR_TOKEN
+
+  quay.io:
+    auth:
+      type: basic_or_anonymous
+      username: QUAY_USERNAME
+      passwordEnv: QUAY_PASSWORD
+
+  public.ecr.aws:
+    auth:
+      type: basic_or_anonymous
+      username: AWS
+      passwordEnv: ECR_PUBLIC_PASSWORD
 
   registry.internal.company.com:
     auth:
       type: basic
       username: ci-username
-      password: REGISTRY_PASSWORD
+      passwordEnv: REGISTRY_PASSWORD
 
   index.docker.io:
     auth:

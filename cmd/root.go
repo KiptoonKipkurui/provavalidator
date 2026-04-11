@@ -9,9 +9,12 @@ import (
 )
 
 var (
-	authConfigPath string
-	authDebug      bool
-	appCtx         AppContext
+	authConfigPath          string
+	authDebug               bool
+	notationConfigDir       string
+	notationTrustPolicyPath string
+	notationTrustStorePath  string
+	appCtx                  AppContext
 )
 
 var rootCmd = &cobra.Command{
@@ -23,6 +26,16 @@ var rootCmd = &cobra.Command{
 		cfg, err := registryauth.LoadConfig(authConfigPath)
 		if err != nil {
 			return err
+		}
+
+		if notationConfigDir != "" {
+			cfg.Notation.ConfigDir = notationConfigDir
+		}
+		if notationTrustPolicyPath != "" {
+			cfg.Notation.TrustPolicyPath = notationTrustPolicyPath
+		}
+		if notationTrustStorePath != "" {
+			cfg.Notation.TrustStorePath = notationTrustStorePath
 		}
 
 		appCtx = AppContext{
@@ -41,12 +54,29 @@ func Execute() {
 }
 
 func init() {
-	rootCmd.AddCommand(checkCmd)
 	rootCmd.PersistentFlags().BoolVar(&authDebug, "auth-debug", false, "Path to registry auth config YAML")
 	rootCmd.PersistentFlags().StringVar(
 		&authConfigPath,
 		"auth-config",
 		"",
 		"Path to registry authentication config YAML",
+	)
+	rootCmd.PersistentFlags().StringVar(
+		&notationConfigDir,
+		"notation-config-dir",
+		"",
+		"Path to the Notation config root containing trustpolicy.json and truststore/",
+	)
+	rootCmd.PersistentFlags().StringVar(
+		&notationTrustPolicyPath,
+		"notation-trust-policy",
+		"",
+		"Path to a Notation trustpolicy.json file",
+	)
+	rootCmd.PersistentFlags().StringVar(
+		&notationTrustStorePath,
+		"notation-trust-store",
+		"",
+		"Path to a Notation truststore directory or config root containing truststore/",
 	)
 }

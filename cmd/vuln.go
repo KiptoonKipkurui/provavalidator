@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kiptoonkipkurui/provavalidator/pkg/sbom"
 	"github.com/kiptoonkipkurui/provavalidator/pkg/vuln"
 	"github.com/spf13/cobra"
 )
@@ -19,7 +20,7 @@ var vulnCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		image := args[0]
-		ctx := cmd.Context()
+		ctx := sbom.WithRuntimeConfig(cmd.Context(), appCtx.AuthConfig.Runtime)
 
 		findings, err := vuln.ScanVulnerabilities(ctx, image)
 		if err != nil {

@@ -1,0 +1,23 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "example-sbom",
+  "documentNamespace": "https://example.com/spdx/example-sbom-1",
+  "creationInfo": {
+    "created": "2026-04-09T00:00:00Z",
+    "creators": [
+      "Tool: provavalidator-test"
+    ]
+  },
+  "packages": [
+    {
+      "name": "openssl",
+      "SPDXID": "SPDXRef-Package-openssl",
+      "versionInfo": "3.0.2",
+      "downloadLocation": "NOASSERTION",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0"
+    }
+  ]
+}

@@ -45,6 +45,11 @@ func (k *OverrideKeychain) Resolve(res authn.Resource) (authn.Authenticator, err
 				return nil, err
 			}
 			return authenticator, nil
+		case "docker_or_anonymous":
+			return authn.NewMultiKeychain(
+				k.base,
+				anonymousKeychain{},
+			).Resolve(res)
 		case "anonymous":
 			return authn.FromConfig(authn.AuthConfig{}), nil
 		case "basic", "token":
@@ -60,6 +65,24 @@ func (k *OverrideKeychain) Resolve(res authn.Resource) (authn.Authenticator, err
 				Username: u,
 				Password: p,
 			}), nil
+		case "basic_or_anonymous", "token_or_anonymous":
+			u, p, anon, err := entry.Auth.resolveSecret()
+			if err != nil {
+				return nil, fmt.Errorf("registry %q: %w", host, err)
+			}
+			if anon {
+				return authn.Anonymous, nil
+			}
+
+			return authn.NewMultiKeychain(
+				fixedAuthenticatorKeychain{
+					auth: authn.FromConfig(authn.AuthConfig{
+						Username: u,
+						Password: p,
+					}),
+				},
+				anonymousKeychain{},
+			).Resolve(res)
 
 		default:
 			return nil, fmt.Errorf("registry %q: unsupported auth.type %q", host, entry.Auth.Type)
@@ -91,4 +114,21 @@ func KeyChainForImage(cfg *Config, imageRef string) (authn.Keychain, string, err
 	kc := NewOverrideKeychain(cfg, authn.DefaultKeychain)
 
 	return kc, host, nil
+}
+
+type fixedAuthenticatorKeychain struct {
+	auth authn.Authenticator
+}
+
+func (k fixedAuthenticatorKeychain) Resolve(authn.Resource) (authn.Authenticator, error) {
+	if k.auth == nil {
+		return authn.Anonymous, nil
+	}
+	return k.auth, nil
+}
+
+type anonymousKeychain struct{}
+
+func (anonymousKeychain) Resolve(authn.Resource) (authn.Authenticator, error) {
+	return authn.Anonymous, nil
 }

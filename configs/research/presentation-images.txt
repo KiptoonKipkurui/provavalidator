@@ -1,0 +1,51 @@
+# Docker Hub official images
+ubuntu:latest
+debian:stable-slim
+alpine:latest
+busybox:latest
+nginx:latest
+redis:latest
+postgres:latest
+python:3.12-slim
+golang:1.24
+node:22-alpine
+
+# Docker Hub public images from security-focused publishers
+aquasec/kube-bench:latest
+aquasec/kube-hunter:latest
+falcosecurity/falco:latest
+
+# Google Container Registry / Distroless
+gcr.io/distroless/static-debian12:latest
+gcr.io/distroless/base-debian12:latest
+gcr.io/distroless/cc-debian12:latest
+gcr.io/distroless/java21-debian12:latest
+
+# Chainguard Registry
+cgr.dev/chainguard/wolfi-base:latest
+cgr.dev/chainguard/nginx:latest
+cgr.dev/chainguard/python:latest
+cgr.dev/chainguard/git:latest
+cgr.dev/chainguard/cosign:latest
+
+# GitHub Container Registry
+ghcr.io/open-policy-agent/opa:latest
+ghcr.io/prometheus/node-exporter:latest
+ghcr.io/sigstore/cosign/cosign:latest
+ghcr.io/aquasecurity/trivy:latest
+ghcr.io/anchore/syft:latest
+ghcr.io/anchore/grype:latest
+
+# Amazon ECR Public
+public.ecr.aws/docker/library/ubuntu:latest
+public.ecr.aws/amazonlinux/amazonlinux:latest
+public.ecr.aws/karpenter/controller:latest
+
+# Quay
+quay.io/prometheus/prometheus:latest
+quay.io/brancz/kube-rbac-proxy:latest
+quay.io/jetstack/cert-manager-controller:latest
+
+# Microsoft Container Registry
+mcr.microsoft.com/azure-cli:latest
+mcr.microsoft.com/powershell:latest

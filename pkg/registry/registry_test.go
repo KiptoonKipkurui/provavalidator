@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"net/url"
+	"runtime"
 	"testing"
 
 	"github.com/google/go-containerregistry/pkg/name"
@@ -45,7 +46,7 @@ func TestFetchImageMetadata_FakeRegistry(t *testing.T) {
 	}
 
 	// now test our FetchImageMetadata
-	meta, err := FetchImageMetadata(t.Context(), ref.String())
+	meta, err := FetchImageMetadata(t.Context(), ref.String(), runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		t.Fatalf("FetchImageMetadata failed: %v", err)
 	}

@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/authn"
 	"github.com/google/go-containerregistry/pkg/name"
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
+	"github.com/kiptoonkipkurui/provavalidator/pkg/registryauth"
 )
 
 // imageMetadata represents metadata fetched from a container registry useful for provenance drift.
@@ -44,14 +44,14 @@ var ErrNotAnImage = errors.New("reference resolved to an index; no suitable plat
 // By default it will select the current runtime platform (runtime.GOOS / runtime.GOARCH). If you need
 // another platform, use FetchImageMetadataWithPlatform.
 
-func FetchImageMetadata(ctx context.Context, image string) (*ImageMetadata, error) {
+func FetchImageMetadata(ctx context.Context, image string, osStr string, arch string) (*ImageMetadata, error) {
 
-	return FetchImageMetadataWithPlatform(ctx, image, runtime.GOOS, runtime.GOARCH)
+	return fetchImageMetadataWithPlatform(ctx, image, osStr, arch)
 }
 
-// FetchImageMetadataWithPlatform fetches metadata but forces a target OS/Arch for selecting a manifest
+// fetchImageMetadataWithPlatform fetches metadata but forces a target OS/Arch for selecting a manifest
 // out of an index. Use this when you need to examine an image for a different platform (e.g., linux/arm64).
-func FetchImageMetadataWithPlatform(ctx context.Context, refStr, osStr, archStr string) (*ImageMetadata, error) {
+func fetchImageMetadataWithPlatform(ctx context.Context, refStr, osStr, archStr string) (*ImageMetadata, error) {
 	// Parse reference (supporting tag or digest)
 	ref, err := name.ParseReference(refStr)
 
@@ -62,9 +62,14 @@ func FetchImageMetadataWithPlatform(ctx context.Context, refStr, osStr, archStr 
 	// Default keychain will pick up docker creds or cloud provider creds available in the environment
 	keychain := authn.DefaultKeychain
 
+	var platform = v1.Platform{
+		Architecture: archStr,
+		OS:           osStr,
+	}
 	// Prepare remote options: default keychain and allow selection by platform
 	remoteOpts := []remote.Option{
 		remote.WithAuthFromKeychain(keychain),
+		remote.WithPlatform(platform),
 	}
 
 	// Try to fetch image ( if ref points to an image manifest or tag)
@@ -188,8 +193,8 @@ func FetchImageMetadataWithPlatform(ctx context.Context, refStr, osStr, archStr 
 	return meta, nil
 }
 
-func GetLayerDiffIDs(refStr string) ([]string, error) {
-	meta, err := FetchImageMetadata(context.Background(), refStr)
+func GetLayerDiffIDs(refStr string, osStr string, arch string) ([]string, error) {
+	meta, err := FetchImageMetadata(context.Background(), refStr, osStr, arch)
 
 	if err != nil {
 		return nil, err
@@ -199,10 +204,33 @@ func GetLayerDiffIDs(refStr string) ([]string, error) {
 }
 
 // GetCompressedLayerDigests returns the compressed layer digests from the manifest.
-func GetCompressedLayerDigests(refStr string) ([]string, error) {
-	meta, err := FetchImageMetadata(context.Background(), refStr)
+func GetCompressedLayerDigests(refStr string, osStr string, arch string) ([]string, error) {
+	meta, err := FetchImageMetadata(context.Background(), refStr, osStr, arch)
 	if err != nil {
 		return nil, err
 	}
 	return meta.CompressedLayerDigests, nil
+}
+
+func ResolveDigest(ctx context.Context, image string, authCfg *registryauth.Config) (string, error) {
+	if _, digest, ok := strings.Cut(image, "@"); ok && strings.HasPrefix(digest, "sha256:") {
+		return digest, nil
+	}
+
+	ref, err := name.ParseReference(image)
+	if err != nil {
+		return "", fmt.Errorf("parse image ref %q: %w", image, err)
+	}
+
+	keychain, _, err := registryauth.KeyChainForImage(authCfg, ref.Name())
+	if err != nil {
+		return "", fmt.Errorf("build registry keychain: %w", err)
+	}
+
+	desc, err := remote.Head(ref, remote.WithContext(ctx), remote.WithAuthFromKeychain(keychain))
+	if err != nil {
+		return "", fmt.Errorf("resolve digest for %q: %w", image, err)
+	}
+
+	return desc.Digest.String(), nil
 }

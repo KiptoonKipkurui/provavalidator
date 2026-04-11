@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/kiptoonkipkurui/provavalidator/pkg/runtimecfg"
 	"k8s.io/apimachinery/pkg/util/yaml"
 )
 
 type Config struct {
 	Registries map[string]RegistryEntry `yaml:"registries"`
+	Notation   NotationConfig           `yaml:"notation"`
+	Runtime    runtimecfg.Config        `yaml:"runtime"`
 }
 
 type RegistryEntry struct {
@@ -22,6 +25,12 @@ type AuthConfig struct {
 	PasswordEnv string `yaml:"passwordEnv,omitempty"`
 	Token       string `yaml:"token,omitempty"`
 	TokenEnv    string `yaml:"tokenEnv,omitempty"`
+}
+
+type NotationConfig struct {
+	ConfigDir       string `yaml:"configDir,omitempty"`
+	TrustPolicyPath string `yaml:"trustPolicyPath,omitempty"`
+	TrustStorePath  string `yaml:"trustStorePath,omitempty"`
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -59,9 +68,9 @@ func LoadConfig(path string) (*Config, error) {
 func validateEntry(host string, entry RegistryEntry) error {
 	t := entry.Auth.Type
 	switch t {
-	case "docker", "anonymous":
+	case "docker", "anonymous", "docker_or_anonymous":
 		return nil
-	case "basic":
+	case "basic", "basic_or_anonymous":
 		if entry.Auth.Username == "" {
 			return fmt.Errorf("registry %q: auth.type=basic requires auth.username", host)
 		}
@@ -69,23 +78,23 @@ func validateEntry(host string, entry RegistryEntry) error {
 			return fmt.Errorf("registry %q: auth.type=basic requires auth.password or auth.passwordEnv", host)
 		}
 		return nil
-	case "token":
+	case "token", "token_or_anonymous":
 		if entry.Auth.Token == "" && entry.Auth.TokenEnv == "" {
 			return fmt.Errorf("registry %q: auth.type=token requires auth.token or auth.tokenEnv", host)
 		}
 		return nil
 	default:
-		return fmt.Errorf("registry %q: unsupported auth.type %q (supported: docker|basic|token|anonymous)", host, t)
+		return fmt.Errorf("registry %q: unsupported auth.type %q (supported: docker|docker_or_anonymous|basic|basic_or_anonymous|token|token_or_anonymous|anonymous)", host, t)
 	}
 }
 func (a AuthConfig) resolveSecret() (username, password string, isAnon bool, err error) {
 	switch a.Type {
 	case "anonymous":
 		return "", "", true, nil
-	case "docker":
+	case "docker", "docker_or_anonymous":
 		// handled elsewhere
 		return "", "", false, nil
-	case "basic":
+	case "basic", "basic_or_anonymous":
 		pw := a.Password
 		if pw == "" && a.PasswordEnv != "" {
 			pw = os.Getenv(a.PasswordEnv)
@@ -94,7 +103,7 @@ func (a AuthConfig) resolveSecret() (username, password string, isAnon bool, err
 			return "", "", false, fmt.Errorf("basic auth: missing password (password or passwordEnv)")
 		}
 		return a.Username, pw, false, nil
-	case "token":
+	case "token", "token_or_anonymous":
 		tok := a.Token
 		if tok == "" && a.TokenEnv != "" {
 			tok = os.Getenv(a.TokenEnv)

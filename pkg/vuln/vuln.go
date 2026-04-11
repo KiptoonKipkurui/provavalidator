@@ -40,8 +40,6 @@ func Summarize(findings []Finding) Summary {
 
 func ScanVulnerabilities(ctx context.Context, image string) ([]Finding, error) {
 	// TODO: integrate Grype or OSV queries
-	fmt.Println("[vuln] Scanning vulnerabilities for:", image)
-
 	resSbom, err := sbom.ExtractSBOM(ctx, image)
 
 	if err != nil {
