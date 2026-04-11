@@ -340,10 +340,10 @@ func classifyNotationError(err error) error {
 	status := "invalid"
 	msg := strings.ToLower(err.Error())
 
-	var retrievalErr notation.ErrorSignatureRetrievalFailed
-	var verificationErr notation.ErrorVerificationFailed
-	var inconclusiveErr notation.ErrorVerificationInconclusive
-	var trustPolicyErr notation.ErrorNoApplicableTrustPolicy
+	var retrievalErr notation.SignatureRetrievalFailedError
+	var verificationErr notation.VerificationFailedError
+	var inconclusiveErr notation.VerificationInconclusiveError
+	var trustPolicyErr notation.NoApplicableTrustPolicyError
 
 	switch {
 	case errors.As(err, &trustPolicyErr):
