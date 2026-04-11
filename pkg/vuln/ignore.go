@@ -3,7 +3,7 @@ package vuln
 import (
 	"os"
 
-	"gopkg.in/yaml.v3"
+	yaml "gopkg.in/yaml.v3"
 )
 
 type IgnoreFile struct {
