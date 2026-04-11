@@ -7,7 +7,7 @@ type Config struct {
 }
 
 func Default() Config {
-	cleanup := false
+	cleanup := true
 	return Config{
 		TempDir:              ".cache/provavalidator/tmp",
 		SyftCacheDir:         ".cache/provavalidator/syft",
