@@ -2,7 +2,6 @@ package vuln
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -152,4 +151,4 @@ func cvssToSeverity(score float64) Severity {
 	}
 }
 
-func (s Severity) String() string { return fmt.Sprintf("%s", string(s)) }
+func (s Severity) String() string { return string(s) }
