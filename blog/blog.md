@@ -1,115 +1,150 @@
-
-*A practical journey through images, provenance, SBOMs, vulnerabilities, and CI enforcement*
+*A practical journey through images, provenance, SBOMs, vulnerabilities, drift, and CI enforcement*
 
 ---
 
 ## Introduction
 
-Containers have become the universal unit of software delivery. We pull images, deploy them to production, and trust that what we’re running is what we intended to run.
+Containers have become the universal unit of software delivery. We pull images, deploy them to production, and trust that what we are running is what we intended to run.
 
 That trust is often implicit.
 
-This blog documents my journey building a **container supply-chain validator** in Go — a tool that doesn’t just *scan* images, but **decides whether they should be allowed into CI/CD pipelines**.
+This blog documents my journey building **provavalidator**, a Go-based **container supply-chain validator** that does more than scan images. The project grew into two things at once:
 
-Along the way, I learned far more about container internals, provenance, SBOMs, and vulnerability data than I expected. This document captures those learnings, with code snippets and practical trade-offs.
+- a CLI for validating individual images in CI/CD
+- a research tool for measuring how real public container ecosystems behave
+
+That second part turned out to be just as important as the first.
+
+Once I started testing across registries, publishers, and image types, I stopped thinking about provenance as a binary feature and started thinking about it as a spectrum of trust signals with lots of real-world gaps.
 
 ---
 
 ## Part 1 — Why Container Supply-Chain Security Is Broken
 
-Most container security today is reactive:
+Most container security workflows are reactive:
 
-- scan an image once
-- upload a report
+- scan an image
+- produce a report
 - hope someone reads it
 
-But modern software supply chains are:
-- distributed
+That does not scale.
+
+Modern software supply chains are:
+
 - automated
+- distributed
 - dependency-heavy
+- registry-driven
 - fast
 
-Security tools that merely **report** are rarely enforced. What we need instead are **validators** — tools that can say *yes* or *no* in CI.
+If a tool only informs, the human becomes the policy engine. In practice that means inconsistent decisions, delayed action, and alert fatigue.
 
-A validator answers questions like:
-- *Was this image built by a trusted system?*
-- *Do I know what’s inside it?*
-- *Does it violate my risk policy?*
+What I wanted instead was a validator that could answer:
 
-Everything in this project flows from that idea.
+- Was this image built by a trusted system?
+- Do I know what is inside it?
+- Does it violate policy?
+- Has it changed unexpectedly?
+
+That framing shaped the whole project.
 
 ---
 
 ## Part 2 — What Is Actually Inside a Container Image?
 
-Before you can validate images, you need to understand what an image really is.
+Before validating anything, I had to understand what an OCI image really is.
 
-A container image is not a tarball. It is a **content-addressed graph** made of:
+A container image is a content-addressed structure made of:
 
-- a **manifest** (what to fetch)
-- a **config** (how to run it)
-- a set of **layers** (filesystem changes)
+- a manifest
+- a config object
+- a set of layers
 
-Two kinds of digests matter:
+Two digest concepts matter:
 
-### Compressed layer digest
-- Used by registries
-- Identifies the compressed blob
-- Appears in the manifest
+### Compressed layer digests
 
-### Uncompressed layer digest (DiffID)
-- Identifies the *filesystem contents*
-- Appears in the image config
-- Used to detect drift
+- live in the manifest
+- represent the registry-distributed blobs
+- are useful for transport and registry-level identity
 
-If two images have the same DiffIDs **in the same order**, their effective filesystems are identical — even if they were distributed differently.
+### Uncompressed layer digests (DiffIDs)
 
-This distinction becomes critical later when reasoning about reproducibility and provenance.
+- live in the config
+- represent actual filesystem content
+- are what matter for drift detection
+
+This distinction is easy to miss, but it becomes crucial.
+
+If two images have the same DiffIDs in the same order, their filesystem contents are effectively the same even if the compressed blobs differ.
+
+That is why drift detection in `provavalidator` uses DiffIDs instead of compressed layer digests.
 
 ---
 
 ## Part 3 — Provenance: Trusting How an Image Was Built
 
-Provenance answers a simple question:
+Provenance asks:
 
-> *Who built this image, and how?*
+> Who built this image, and can I verify that claim?
 
-Standards like **SLSA** and **in-toto** define a structured way to describe:
-- the builder identity
-- the source repository
-- the build steps
-- the materials used
+In practice that means working with:
 
-Tools like `cosign` attach this information as **signed attestations** to images.
+- in-toto statements
+- SLSA provenance
+- Sigstore/Cosign signatures
+- Rekor transparency log entries
+- builder and issuer identities
 
-In my validator, provenance verification means:
-- fetching attestations
-- verifying signatures
-- checking builder identity
-- handling the very common case where *no attestations exist*
+The happy-path demo is simple:
 
-An important lesson here:
-> **Absence of provenance is not an error — but it is a signal.**
+- fetch attestation
+- verify signature
+- extract predicate metadata
+
+The real world is not that simple.
+
+I found several cases:
+
+- images with no provenance at all
+- images with attestations but no useful identity context
+- images with rich metadata that older verifier paths could not validate correctly
+- registries that blocked access before provenance could even be inspected
+
+One of the most useful lessons from this project was:
+
+> Absence of provenance is not the same as invalid provenance, and tooling incompatibility is not the same as publisher failure.
+
+That distinction led me to separate statuses like:
+
+- `not_found`
+- `verification_incompatible`
+- `auth_required`
+- `registry_error`
+- `timeout`
+
+That ended up being much more valuable than a naive pass/fail model.
 
 ---
 
 ## Part 4 — SBOMs: Making Software Transparent
 
-An SBOM (Software Bill of Materials) is simply an **inventory**:
-- packages
-- versions
-- ecosystems
-- licenses
+An SBOM is not a security verdict. It is an inventory.
 
-It does not say whether software is secure.
-It says **what exists**, so decisions can be made.
+It tells you:
 
-I learned quickly that SBOMs vary wildly in format:
-- CycloneDX
+- which packages exist
+- which versions are present
+- which ecosystems they belong to
+- how they can be referenced downstream
+
+I had to normalize different SBOM formats into one internal shape so the rest of the system did not care whether the source was:
+
 - SPDX
+- CycloneDX
 - Syft JSON
 
-Rather than fight formats, I normalize everything into a stable internal model:
+The normalized representation is intentionally small:
 
 ```go
 type NormalizedPackage struct {
@@ -120,26 +155,24 @@ type NormalizedPackage struct {
 }
 ```
 
-Once normalized, everything downstream becomes simpler.
+That normalization step made the rest of the project much easier. Once packages are stable, vulnerability scanning and policy logic become portable across SBOM formats.
+
+---
 
 ## Part 5 — Resolving SBOMs the Right Way
 
-One misconception I had early on:
+One thing I learned quickly:
 
-```text
-Every image has an SBOM.
-```
-That is not true.
+> Not every image publishes an SBOM.
 
-SBOMs are optional metadata. When they exist, they can come from multiple places.
+So the project needed a resolution strategy rather than a single source of truth.
 
-My resolution strategy became:
+The approach became:
 
-1. Signed SBOM attestation (best)
+1. use a signed SBOM attestation when available
+2. fall back to generating an SBOM locally
 
-2. Generate SBOM locally (fallback)
-
-Trust matters more than convenience. So I explicitly track where the SBOM came from:
+That distinction matters enough that I track it explicitly:
 
 ```go
 type SourceType string
@@ -150,170 +183,364 @@ const (
 )
 ```
 
-A generated SBOM is useful — but it should never be confused with a signed one.
+A generated SBOM is still useful, especially for research, but it should not be confused with publisher-provided signed metadata.
 
-A key lesson here:
+This became one of the major themes of the project:
 
-```text
-SBOM provenance matters as much as SBOM content.
-```
+> metadata source matters almost as much as metadata content.
+
+---
+
 ## Part 6 — Vulnerability Scanning with OSV
 
-Once you have an SBOM, the natural next step is vulnerability scanning.
+Once the image contents are normalized, vulnerability scanning becomes a package-to-advisory mapping problem.
 
-Instead of raw CVE feeds, I chose OSV because:
+I chose **OSV** because it:
 
-- it understands ecosystems
+- understands ecosystems
+- supports batching
+- handles version-aware matching better than naive CVE list lookups
 
-- it supports batch queries
+The flow is:
 
-- it handles version ranges correctly
+1. extract or generate an SBOM
+2. normalize packages
+3. construct OSV queries
+4. map results back to packages
+5. summarize severity
 
-The scanning flow is:
+Severity is normalized into buckets like `low`, `medium`, `high`, and `critical`.
 
-1. take normalized packages
+An important observation from the research runs:
 
-2. construct OSV batch queries
+- vulnerability lookup itself was usually not the dominant phase
+- SBOM generation was often more expensive than OSV querying
 
-3. map results back to packages
+That mattered later when I began tuning execution timeouts.
 
-4. normalize severity
+---
 
-Example mapping:
+## Part 7 — Drift Detection: Has the Image Changed Unexpectedly?
 
-```go
-func cvssToSeverity(score float64) Severity {
-    switch {
-    case score >= 9.0:
-        return Critical
-    case score >= 7.0:
-        return High
-    case score >= 4.0:
-        return Medium
-    default:
-        return Low
-    }
-}
-```
+Another goal of the project was **drift detection**.
 
-Vulnerabilities are not lists — they are relationships between versions and contexts.
+The current drift implementation compares filesystem-oriented layer DiffIDs between:
 
-## Part 7 — Policy: Turning Findings into Decisions
+- an image under inspection
+- a baseline image
 
-Scanning without enforcement is theatre.
+It can detect:
 
-The validator enforces policy via simple rules:
-```bash
---fail-on high
+- changed layers
+- extra layers
+- missing layers
 
-```
-This means:
+This matters because mutable tags can hide substantial changes. Two tags may have the same human-readable name while representing different underlying filesystems.
 
-- allow low/medium issues
+Drift is conceptually different from provenance, SBOM, and vulnerabilities because it requires a comparison target. That means drift naturally fits:
 
-- block high/critical issues
+- CI enforcement against a pinned baseline
+- release validation
+- golden-image policy
 
-I also added ignore files to handle false positives:
+and less naturally fits completely open-ended public corpus research unless you supply a baseline mapping.
 
-```yaml
-ignore:
-  - vulnId: OSV-2025-1234
-    reason: "False positive in static binary"
-```
+That is the next major evolution I would make to the research pipeline.
 
-A validator must be strict and usable.
+---
 
-## Part 8 — GitHub Actions Integration
+## Part 8 — Researching Real Public Images
 
-Security tools only work if developers see them.
+At some point the project stopped being only a validator and became a measurement tool.
 
-GitHub Actions provides two powerful mechanisms:
+I added a `corpus` command so I could test many images across registries and answer questions like:
 
-- annotations (inline PR feedback)
+- how many public images have verifiable provenance?
+- which registries expose richer metadata?
+- how often are SBOMs available?
+- how much of the process completes inside a realistic CI timeout budget?
 
-- exit codes (CI enforcement)
+The corpus grew into a registry-diverse list including:
 
-When policy fails, my tool:
+- Docker Hub official images
+- Distroless
+- Chainguard
+- GitHub Container Registry
+- Amazon ECR Public
+- Quay
+- Microsoft Container Registry
+- security-focused publishers like Aqua, Anchore, Falco, and Sigstore
 
-- exits non-zero
+This was one of the most valuable additions to the project because it changed the presentation from:
 
-- prints human-readable output
+> “Here is a tool I built.”
 
-- emits GitHub annotations like:
-```ruby
-::error::CRITICAL vulnerability OSV-2025-1234 in openssl@3.0.2
-```
+to:
 
-This brings security feedback directly into pull requests — where it belongs.
+> “Here is what the ecosystem actually looks like when a validator is applied to real images.”
 
-Part 9 — What This Tool Does Not Solve
+---
 
-It’s important to be honest.
+## Part 9 — What the Corpus Actually Showed
 
-This validator does not:
+The public-image results were revealing.
+
+Across my expanded corpus, a few patterns stood out consistently:
+
+### 1. Distroless and Chainguard were the strongest provenance examples
+
+They were repeatedly:
+
+- keyless
+- Rekor-backed
+- attestation-rich
+- verifiable with the improved DSSE-aware path
+
+### 2. Mainstream base images often had weak or absent provenance
+
+Many popular Docker Hub images came back as:
+
+- `not_found`
+
+That does not mean they are malicious. It means verifiable provenance is still uneven in practice.
+
+### 3. Registry access is part of the experiment
+
+Some failures had nothing to do with trust metadata and everything to do with registry behavior:
+
+- GHCR images that required auth for digest resolution
+- broken or nonexistent `latest` tags on some Quay and ECR references
+- inconsistent anonymous access patterns
+
+This ended up being a useful presentation point:
+
+> A supply-chain validator does not operate in a vacuum. Registry behavior is part of the trust story.
+
+### 4. SBOM and vulnerability results changed materially with timeout tuning
+
+At a `60s` per-image timeout, the corpus still produced useful results, but some larger images timed out in SBOM/vulnerability work.
+
+At `90s`, more borderline images completed, and the vulnerability totals increased significantly.
+
+That means timeout choice is not just an implementation detail. It affects the quality of the resulting security data.
+
+---
+
+## Part 10 — Performance Tuning: Worker Pools and Time Budgets
+
+Once the corpus gained provenance, SBOM, and vulnerability stages, it became too slow to run strictly sequentially.
+
+I introduced:
+
+- a bounded worker pool
+- configurable corpus concurrency
+- a single per-image timeout
+
+The worker pool improved throughput without letting one image block the entire dataset.
+
+The timeout model matters too. I originally experimented with different warm-up and steady-state values, but simplified it to a single `--image-timeout` because what I really needed first was a baseline.
+
+That made empirical tuning easier:
+
+- `60s` gave meaningful results
+- `90s` gave better completion for larger images
+
+This was a good reminder that the right timeout should be learned from data, not guessed upfront.
+
+---
+
+## Part 11 — Measuring Where Time Goes
+
+To answer a practical question:
+
+> What is actually consuming the time?
+
+I instrumented the corpus output with per-image phase timings:
+
+- `resolve_ms`
+- `attestation_ms`
+- `sbom_ms`
+- `vulnerability_ms`
+- `total_ms`
+
+That made it possible to see which phases dominated.
+
+A few representative examples:
+
+### `ubuntu:latest`
+
+- resolve: ~2.9s
+- attestation: ~8.0s
+- SBOM: ~12.3s
+- vulnerability lookup: ~0.5s
+- total: ~23.8s
+
+### `gcr.io/distroless/static-debian12:latest`
+
+- resolve: ~2.7s
+- attestation: ~6.0s
+- SBOM: ~7.5s
+- vulnerability lookup: ~0.4s
+- total: ~16.6s
+
+### `ghcr.io/aquasecurity/trivy:latest`
+
+- resolve: ~3.0s
+- attestation: ~4.6s
+- SBOM: ~18.5s
+- vulnerability lookup: ~2.4s
+- total: ~28.6s
+
+The pattern was clear:
+
+- SBOM generation was often the largest single cost
+- provenance/attestation work was usually second
+- vulnerability lookups were comparatively smaller, though they grew with package count
+
+That made performance tuning much more grounded.
+
+---
+
+## Part 12 — Registry Authentication Is Part of the Product
+
+One of the more subtle upgrades was in registry auth handling.
+
+The project was intended to work in two ways:
+
+- access private registries when credentials are available
+- still access public images on those same registries without requiring auth
+
+To support that, I added auth modes with anonymous fallback, such as:
+
+- `token_or_anonymous`
+- `basic_or_anonymous`
+- `docker_or_anonymous`
+
+This was especially relevant for:
+
+- GHCR
+- Quay
+- ECR Public
+
+That change improved the honesty of the corpus output too. Instead of flattening everything into generic failures, the tool can now separate:
+
+- `auth_required`
+- `registry_error`
+- `resolve_error`
+
+This made the corpus more useful as a measurement instrument and more credible as research material.
+
+---
+
+## Part 13 — GitHub Actions: From CLI to CI Primitive
+
+From the start, the project was meant to be more than a local CLI.
+
+I added a reusable GitHub Action wrapper so the project can run in two forms:
+
+- as a command-line tool
+- as a GitHub Action that builds and invokes the CLI
+
+The Action supports multiple modes:
+
+- `check`
+- `vuln`
+- `drift`
+- `attest`
+- `corpus`
+- `args` for raw CLI passthrough
+
+That means the same project can be used for:
+
+- build gating
+- release validation
+- image comparison
+- research corpus generation
+
+without having separate implementations for CI and local use.
+
+This was important architecturally: the Action is not a different product. It is a thin wrapper around the same CLI behavior.
+
+---
+
+## Part 14 — CI for the Project Itself
+
+Since the validator is meant to be production-facing, its own repository needed better CI too.
+
+I upgraded the GitHub workflows to include standard Go checks:
+
+- `gofmt`
+- `go vet`
+- `go build ./...`
+- `go test ./...`
+- `golangci-lint`
+- `govulncheck`
+
+I also added a release workflow for tagged builds so the project can publish binaries in a more standard way.
+
+That may sound secondary, but it matters:
+
+> a supply-chain tool should take its own supply chain seriously.
+
+---
+
+## Part 15 — What This Project Still Does Not Solve
+
+It is important to stay honest.
+
+`provavalidator` does not:
 
 - detect zero-days
-
 - analyze runtime behavior
-
 - guarantee absence of compromise
+- prove that unsigned images are safe
 
-What it does provide is:
+It is a policy-oriented validator built around evidence:
 
-- transparency
+- provenance
+- contents
+- vulnerability data
+- layer consistency
 
-- trust signals
+That evidence can be strong or weak. The job of the tool is to make that explicit and actionable.
 
-- enforceable gates
+---
 
-Security is not perfection. It is **risk** reduction.
+## Conclusion
 
-Part 10 — Lessons Learned Building Security Tooling in Go
+What started as a provenance validator became a broader supply-chain research and enforcement tool.
 
-A few hard-earned lessons:
+The most useful thing I learned was this:
 
-- APIs change — design small interfaces
+> trust in container images is not binary.
 
-- Blank imports matter (hello, SQLite drivers)
-```go
-	_ "modernc.org/sqlite"
+An image can be:
 
-```
+- widely used but weakly verifiable
+- signed but not policy-ready
+- rich in metadata but hard to validate with older tooling
+- easy to inventory but expensive to analyze at scale
 
+The project now reflects that reality more honestly.
 
+It can:
 
-- Failure paths deserve as much design as success paths
+- validate provenance
+- resolve or generate SBOMs
+- scan vulnerabilities
+- detect drift
+- run as a CLI
+- run as a GitHub Action
+- and measure these properties across a large corpus of public images
 
-```text
-Security tooling is about judgment, not just code
+That combination made the project much more useful, and it made the presentation stronger too.
 
-```
+Instead of saying:
 
+> “I built a validator.”
 
-Most importantly:
+I can now say:
 
-```text
+> “I built a validator, used it to study real container ecosystems, and learned where trust signals are strong, weak, missing, or operationally hard to use.”
 
-Good security tools explain their decisions.
-```
-Conclusion
-
-This project started as an experiment and turned into a full supply-chain validator:
-
-![Conclusion](End-to-end-system-view.png "End To End System Arch Diagram")
-
-
-- provenance verification
-
-- SBOM resolution
-
-- vulnerability scanning
-
-- policy enforcement
-
-- CI integration
-
-More importantly, it changed how I think about containers:
-not as blobs to deploy, but as artifacts to be justified.
-
-If this series helps even one engineer think more clearly about trust in their pipeline, it has done its job.
+That is a much more interesting story.

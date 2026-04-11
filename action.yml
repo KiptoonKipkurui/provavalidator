@@ -1,0 +1,119 @@
+name: provavalidator
+description: Run provavalidator as a GitHub Action for provenance, SBOM, vulnerability, drift, and corpus workflows.
+
+inputs:
+  mode:
+    description: 'Execution mode: check, vuln, drift, attest, corpus, or args'
+    required: false
+    default: check
+  image:
+    description: 'Container image reference for check, vuln, drift, or attest modes'
+    required: false
+  baseline:
+    description: 'Baseline image reference for drift-aware modes'
+    required: false
+  fail-on:
+    description: 'Severity threshold for vuln/check modes (low|medium|high|critical)'
+    required: false
+  ignore-file:
+    description: 'Path to vulnerability ignore file'
+    required: false
+  require-provenance:
+    description: 'Whether check mode should require valid provenance'
+    required: false
+    default: "true"
+  fail-on-drift:
+    description: 'Whether drift/check mode should fail on drift'
+    required: false
+    default: "true"
+  allow-extra:
+    description: 'Allow extra layers in drift/check mode'
+    required: false
+    default: "false"
+  allow-missing:
+    description: 'Allow missing layers in drift/check mode'
+    required: false
+    default: "false"
+  allow-reorder:
+    description: 'Allow re-ordered layers in drift/check mode'
+    required: false
+    default: "false"
+  format:
+    description: 'Output format where supported (text|json|csv)'
+    required: false
+    default: text
+  auth-config:
+    description: 'Path to registry auth config yaml'
+    required: false
+  images-file:
+    description: 'Path to newline-delimited corpus image list'
+    required: false
+  concurrency:
+    description: 'Parallelism for corpus mode'
+    required: false
+    default: "4"
+  image-timeout:
+    description: 'Per-image timeout for corpus mode'
+    required: false
+    default: "90s"
+  output:
+    description: 'Optional output file for corpus mode'
+    required: false
+  args:
+    description: 'Raw CLI arguments when mode=args'
+    required: false
+  go-version-file:
+    description: 'Path to go.mod used to select the Go toolchain'
+    required: false
+    default: go.mod
+
+outputs:
+  command:
+    description: 'The provavalidator command that was executed'
+    value: ${{ steps.run.outputs.command }}
+  binary-path:
+    description: 'Path to the built provavalidator binary'
+    value: ${{ steps.build.outputs.binary-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: ${{ github.action_path }}/${{ inputs.go-version-file }}
+
+    - name: Build provavalidator
+      id: build
+      shell: bash
+      run: |
+        set -euo pipefail
+        binary_path="${RUNNER_TEMP}/provavalidator"
+        cd "${GITHUB_ACTION_PATH}"
+        go build -o "${binary_path}" .
+        echo "binary-path=${binary_path}" >> "${GITHUB_OUTPUT}"
+
+    - name: Run provavalidator
+      id: run
+      shell: bash
+      env:
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_IMAGE: ${{ inputs.image }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_IGNORE_FILE: ${{ inputs.ignore-file }}
+        INPUT_REQUIRE_PROVENANCE: ${{ inputs.require-provenance }}
+        INPUT_FAIL_ON_DRIFT: ${{ inputs.fail-on-drift }}
+        INPUT_ALLOW_EXTRA: ${{ inputs.allow-extra }}
+        INPUT_ALLOW_MISSING: ${{ inputs.allow-missing }}
+        INPUT_ALLOW_REORDER: ${{ inputs.allow-reorder }}
+        INPUT_FORMAT: ${{ inputs.format }}
+        INPUT_AUTH_CONFIG: ${{ inputs.auth-config }}
+        INPUT_IMAGES_FILE: ${{ inputs.images-file }}
+        INPUT_CONCURRENCY: ${{ inputs.concurrency }}
+        INPUT_IMAGE_TIMEOUT: ${{ inputs.image-timeout }}
+        INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_ARGS: ${{ inputs.args }}
+        PROVAVALIDATOR_BIN: ${{ steps.build.outputs.binary-path }}
+      run: |
+        bash "${GITHUB_ACTION_PATH}/scripts/github-action.sh"

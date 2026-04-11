@@ -1,19 +1,74 @@
-name: Go
-on: [push]
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
 
 jobs:
-  build:
+  ci:
+    name: build-test-vet
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v5
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.21.x'
-      - name: Install dependencies
-        run: go get .
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Verify formatting
+        run: |
+          test -z "$(gofmt -l .)"
+
+      - name: Vet
+        run: go vet ./...
+
       - name: Build
         run: go build -v ./...
-      - name: Test with the Go CLI
-        run: go test
+
+      - name: Test
+        run: go test ./...
+
+  golangci-lint:
+    name: golangci-lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: Run govulncheck
+        run: govulncheck ./...

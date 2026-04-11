@@ -202,7 +202,23 @@ Useful for:
 - audits
 
 
-### Github Actions example
+### GitHub Action
+
+`provavalidator` can now run as either:
+- a standalone CLI
+- a reusable GitHub Action
+
+The Action builds the project from source in the action workspace and then runs the existing CLI underneath, so the Action and CLI stay aligned.
+
+Supported Action modes:
+- `check`
+- `vuln`
+- `drift`
+- `attest`
+- `corpus`
+- `args` for raw CLI arguments
+
+Minimal `check` example:
 
 ```yaml
 name: Supply Chain Validation
@@ -219,23 +235,92 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install provavalidator
-        run: |
-          curl -L https://github.com/kiptoonkipkurui/provavalidator/releases/latest/download/provavalidator-linux-amd64 \
-            -o provavalidator
-          chmod +x provavalidator
-          sudo mv provavalidator /usr/local/bin/
-
-      - name: Validate image
-        run: |
-          provavalidator vuln ghcr.io/org/app:${{ github.sha }} \
-            --fail-on high \
-            --ignore-file .provavalidator-ignore.yaml
+      - name: Validate built image
+        uses: kiptoonkipkurui/provavalidator@main
+        with:
+          mode: check
+          image: ghcr.io/org/app:${{ github.sha }}
+          fail-on: high
+          ignore-file: .provavalidator-ignore.yaml
+          format: json
 ```
 
-This will: 
-- block the PR on policy violation
-- Surface issues directly in the PR via annotations
+Drift example:
+
+```yaml
+- name: Compare image against approved baseline
+  uses: kiptoonkipkurui/provavalidator@main
+  with:
+    mode: drift
+    image: ghcr.io/org/app:${{ github.sha }}
+    baseline: ghcr.io/org/app@sha256:abcd1234...
+    fail-on-drift: true
+```
+
+Corpus / research example:
+
+```yaml
+- name: Research image corpus
+  uses: kiptoonkipkurui/provavalidator@main
+  with:
+    mode: corpus
+    images-file: configs/research/presentation-images.txt
+    concurrency: 4
+    image-timeout: 90s
+    format: json
+    output: results/corpus.json
+```
+
+Raw args example:
+
+```yaml
+- name: Run custom provavalidator command
+  uses: kiptoonkipkurui/provavalidator@main
+  with:
+    mode: args
+    args: check ghcr.io/org/app:${{ github.sha }} --fail-on high --format json
+```
+
+Registry auth can be passed the same way as the CLI:
+
+```yaml
+- name: Validate private or mixed-visibility registries
+  uses: kiptoonkipkurui/provavalidator@main
+  env:
+    GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+    QUAY_USERNAME: ${{ secrets.QUAY_USERNAME }}
+    QUAY_PASSWORD: ${{ secrets.QUAY_PASSWORD }}
+    ECR_PUBLIC_PASSWORD: ${{ secrets.ECR_PUBLIC_PASSWORD }}
+  with:
+    mode: corpus
+    auth-config: configs/auth.example.yaml
+    images-file: configs/research/presentation-images.txt
+```
+
+This lets the project work in two ways:
+- as a local or CI CLI for direct invocation
+- as a GitHub-native Action that wraps the same commands for image build pipelines
+
+### Research a public image corpus
+
+For presentation or policy-design work, you can run provenance checks across a batch of public images and export the results as CSV:
+
+```bash
+provavalidator corpus \
+  --images-file configs/research/presentation-images.txt \
+  --format csv \
+  --output results/provenance-study.csv
+```
+
+JSON output is also available:
+
+```bash
+provavalidator corpus \
+  --images-file configs/research/presentation-images.txt \
+  --format json
+```
+
+The CSV includes image reference, resolved digest, provenance status, signer identity, issuer, predicate types, source repo, builder ID, Rekor presence, and a simple 0-5 maturity score.
 
 
 ### What provavalidator does not do
