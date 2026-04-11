@@ -70,7 +70,7 @@ func Run(ctx context.Context, opt Options) (*Result, error) {
 	if err != nil {
 		return out, OperationalError{Err: fmt.Errorf("SBOM generation error %w", err)}
 	}
-	findings, err := vuln.ScanVulnerabilities(ctx, opt.Image)
+	findings, _ := vuln.ScanVulnerabilities(ctx, opt.Image)
 
 	ignored, err := vuln.LoadIgnoreFile(opt.IgnoreFile)
 	if err != nil {
