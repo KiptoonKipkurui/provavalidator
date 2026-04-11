@@ -121,27 +121,27 @@ func writeCorpusOutput(result *research.CorpusResult, format, outputPath string)
 }
 
 func printCorpusText(out io.Writer, result *research.CorpusResult) {
-	fmt.Fprintf(out, "Images tested: %d\n", result.Summary.Total)
-	fmt.Fprintf(out, "Verified provenance: %d\n", result.Summary.Verified)
-	fmt.Fprintf(out, "With Rekor entry: %d\n", result.Summary.WithRekor)
-	fmt.Fprintf(out, "With source repo: %d\n", result.Summary.WithSourceRepo)
-	fmt.Fprintf(out, "With builder ID: %d\n\n", result.Summary.WithBuilderID)
-	fmt.Fprintf(out, "With SBOM: %d\n", result.Summary.WithSBOM)
-	fmt.Fprintf(out, "With vulnerability scan: %d\n", result.Summary.WithVulnerabilityScan)
-	fmt.Fprintf(out, "Images with critical vulns: %d\n", result.Summary.ImagesWithCritical)
-	fmt.Fprintf(out, "Total vulnerabilities: %d\n\n", result.Summary.TotalVulnerabilities)
+	_, _ = fmt.Fprintf(out, "Images tested: %d\n", result.Summary.Total)
+	_, _ = fmt.Fprintf(out, "Verified provenance: %d\n", result.Summary.Verified)
+	_, _ = fmt.Fprintf(out, "With Rekor entry: %d\n", result.Summary.WithRekor)
+	_, _ = fmt.Fprintf(out, "With source repo: %d\n", result.Summary.WithSourceRepo)
+	_, _ = fmt.Fprintf(out, "With builder ID: %d\n\n", result.Summary.WithBuilderID)
+	_, _ = fmt.Fprintf(out, "With SBOM: %d\n", result.Summary.WithSBOM)
+	_, _ = fmt.Fprintf(out, "With vulnerability scan: %d\n", result.Summary.WithVulnerabilityScan)
+	_, _ = fmt.Fprintf(out, "Images with critical vulns: %d\n", result.Summary.ImagesWithCritical)
+	_, _ = fmt.Fprintf(out, "Total vulnerabilities: %d\n\n", result.Summary.TotalVulnerabilities)
 
 	for _, image := range result.Images {
-		fmt.Fprintf(out, "- %s\n", image.ImageRef)
-		fmt.Fprintf(out, "  status=%s score=%d digest=%s\n", image.ProvenanceStatus, image.Score, image.ResolvedDigest)
+		_, _ = fmt.Fprintf(out, "- %s\n", image.ImageRef)
+		_, _ = fmt.Fprintf(out, "  status=%s score=%d digest=%s\n", image.ProvenanceStatus, image.Score, image.ResolvedDigest)
 		if image.SourceRepo != "" {
-			fmt.Fprintf(out, "  source=%s\n", image.SourceRepo)
+			_, _ = fmt.Fprintf(out, "  source=%s\n", image.SourceRepo)
 		}
 		if image.BuilderID != "" {
-			fmt.Fprintf(out, "  builder=%s\n", image.BuilderID)
+			_, _ = fmt.Fprintf(out, "  builder=%s\n", image.BuilderID)
 		}
 		if image.SBOMAvailable {
-			fmt.Fprintf(out, "  sbom=%s source=%s packages=%d\n", image.SBOMFormat, image.SBOMSource, image.PackageCount)
+			_, _ = fmt.Fprintf(out, "  sbom=%s source=%s packages=%d\n", image.SBOMFormat, image.SBOMSource, image.PackageCount)
 		}
 		if image.VulnerabilityScan != "" && image.VulnerabilityScan != "not_run" {
 			fmt.Fprintf(out, "  vuln_scan=%s total=%d critical=%d high=%d medium=%d low=%d unknown=%d\n",
@@ -155,13 +155,13 @@ func printCorpusText(out io.Writer, result *research.CorpusResult) {
 			)
 		}
 		if len(image.PredicateTypes) > 0 {
-			fmt.Fprintf(out, "  predicates=%s\n", strings.Join(image.PredicateTypes, ", "))
+			_, _ = fmt.Fprintf(out, "  predicates=%s\n", strings.Join(image.PredicateTypes, ", "))
 		}
 		if image.ProvenanceError != "" {
-			fmt.Fprintf(out, "  provenance_error=%s\n", image.ProvenanceError)
+			_, _ = fmt.Fprintf(out, "  provenance_error=%s\n", image.ProvenanceError)
 		}
 		if image.VulnerabilityError != "" {
-			fmt.Fprintf(out, "  vulnerability_error=%s\n", image.VulnerabilityError)
+			_, _ = fmt.Fprintf(out, "  vulnerability_error=%s\n", image.VulnerabilityError)
 		}
 	}
 }

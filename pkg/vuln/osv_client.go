@@ -73,7 +73,12 @@ func (c *OSVClient) QueryBatch(ctx context.Context, queries []osvQuery) ([]osvQu
 		if err != nil {
 			return nil, fmt.Errorf("osv: http request: %w", err)
 		}
-		defer resp.Body.Close()
+
+		defer func() {
+			if cerr := resp.Body.Close(); err == nil && cerr != nil {
+				err = cerr
+			}
+		}()
 		body, _ := io.ReadAll(resp.Body)
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return nil, fmt.Errorf("osv: http %d: %s", resp.StatusCode, string(body))
