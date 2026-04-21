@@ -1,0 +1,9 @@
+FROM alpine:3.20
+
+WORKDIR /app
+
+COPY app.txt /app/app.txt
+COPY config/default.conf /etc/layer-drift-demo.conf
+RUN echo "debug=true" > /tmp/debug-marker
+
+CMD ["sh", "-c", "echo extra-layer image && cat /app/app.txt && sleep 3600"]
