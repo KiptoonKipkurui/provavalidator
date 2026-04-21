@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/authn"
+	"github.com/google/go-containerregistry/pkg/name"
 	"github.com/kiptoonkipkurui/provavalidator/pkg/registryauth"
 	_ "github.com/notaryproject/notation-core-go/signature/cose"
 	_ "github.com/notaryproject/notation-core-go/signature/jws"
@@ -21,9 +23,12 @@ import (
 	notationtrustpolicy "github.com/notaryproject/notation-go/verifier/trustpolicy"
 	notationtruststore "github.com/notaryproject/notation-go/verifier/truststore"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"oras.land/oras-go/v2/content"
 	orasremote "oras.land/oras-go/v2/registry/remote"
 	orasauth "oras.land/oras-go/v2/registry/remote/auth"
 )
+
+var newORASRepository = newORASRemoteRepository
 
 func inspectWithNotation(ctx context.Context, image string, authCfg *registryauth.Config) (*VerificationReport, error) {
 	discovered, targetDesc, err := discoverWithNotation(ctx, image, authCfg)
@@ -91,6 +96,20 @@ func discoverWithNotation(ctx context.Context, image string, authCfg *registryau
 }
 
 func verifyWithNotation(ctx context.Context, image string, authCfg *registryauth.Config) ([]VerifiedAttestation, error) {
+	statements, err := verifyWithNotationStatements(ctx, image, authCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]VerifiedAttestation, 0, len(statements))
+	for _, statement := range statements {
+		results = append(results, statement.Attestation)
+	}
+
+	return results, nil
+}
+
+func verifyWithNotationStatements(ctx context.Context, image string, authCfg *registryauth.Config) ([]VerifiedStatement, error) {
 	repo, err := newNotationRepository(image, authCfg)
 	if err != nil {
 		return nil, err
@@ -112,23 +131,25 @@ func verifyWithNotation(ctx context.Context, image string, authCfg *registryauth
 		return nil, fmt.Errorf("notation verification returned no outcomes")
 	}
 
-	results := make([]VerifiedAttestation, 0, len(outcomes))
+	results := make([]VerifiedStatement, 0, len(outcomes))
 	for _, outcome := range outcomes {
 		if outcome == nil || outcome.EnvelopeContent == nil {
 			continue
 		}
 
 		subject, issuer := notationCertSubjectIssuer(outcome.EnvelopeContent.SignerInfo.CertificateChain)
-		results = append(results, VerifiedAttestation{
-			ImageRef:          image,
-			Subject:           subject,
-			Issuer:            issuer,
-			RekorEntryPresent: false,
-			ImageDigest:       targetDesc.Digest.String(),
-			PredicateType:     "notation-signature",
-			SourceRepo:        "",
-			BuilderID:         "",
-			WorkflowRef:       "",
+		results = append(results, VerifiedStatement{
+			Attestation: VerifiedAttestation{
+				ImageRef:          image,
+				Subject:           subject,
+				Issuer:            issuer,
+				RekorEntryPresent: false,
+				ImageDigest:       targetDesc.Digest.String(),
+				PredicateType:     "notation-signature",
+				SourceRepo:        "",
+				BuilderID:         "",
+				WorkflowRef:       "",
+			},
 		})
 	}
 
@@ -137,6 +158,44 @@ func verifyWithNotation(ctx context.Context, image string, authCfg *registryauth
 	}
 
 	return results, nil
+}
+
+func extractSBOMWithNotationImpl(ctx context.Context, image string) ([]byte, string, error) {
+	repo, err := newORASRepository(image, nil)
+	if err != nil {
+		return nil, "", err
+	}
+
+	targetDesc, err := repo.Resolve(ctx, repo.Reference.Reference)
+	if err != nil {
+		return nil, "", fmt.Errorf("resolve image for notation sbom discovery: %w", err)
+	}
+
+	referrers, err := notationSBOMCandidates(ctx, repo, targetDesc)
+	if err != nil {
+		return nil, "", fmt.Errorf("discover notation sbom referrers: %w", err)
+	}
+
+	imageRef, err := name.ParseReference(image)
+	if err != nil {
+		return nil, "", fmt.Errorf("parse image ref: %w", err)
+	}
+
+	for _, referrer := range referrers {
+		artifactRef := fmt.Sprintf("%s@%s", imageRef.Context().Name(), referrer.Digest.String())
+		if _, err := verifyWithNotationStatements(ctx, artifactRef, nil); err != nil {
+			continue
+		}
+
+		payload, mediaType, err := fetchSBOMArtifactPayload(ctx, repo, referrer)
+		if err != nil {
+			continue
+		}
+
+		return payload, mediaType, nil
+	}
+
+	return nil, "", ErrNoSBOMAttestation
 }
 
 func newNotationVerifier(authCfg *registryauth.Config) (notation.Verifier, error) {
@@ -162,9 +221,18 @@ func newNotationVerifier(authCfg *registryauth.Config) (notation.Verifier, error
 }
 
 func newNotationRepository(image string, authCfg *registryauth.Config) (notationregistry.Repository, error) {
-	repo, err := orasremote.NewRepository(image)
+	repo, err := newORASRemoteRepository(image, authCfg)
 	if err != nil {
 		return nil, fmt.Errorf("notation repository: %w", err)
+	}
+
+	return notationregistry.NewRepository(repo), nil
+}
+
+func newORASRemoteRepository(image string, authCfg *registryauth.Config) (*orasremote.Repository, error) {
+	repo, err := orasremote.NewRepository(image)
+	if err != nil {
+		return nil, err
 	}
 
 	repo.Client = &orasauth.Client{
@@ -172,7 +240,7 @@ func newNotationRepository(image string, authCfg *registryauth.Config) (notation
 		Cache:      orasauth.NewCache(),
 	}
 
-	return notationregistry.NewRepository(repo), nil
+	return repo, nil
 }
 
 func listNotationSignatures(ctx context.Context, repo notationregistry.Repository, image string) (ocispec.Descriptor, []ocispec.Descriptor, error) {
@@ -327,6 +395,78 @@ func mergeNotationDetails(atts []VerifiedAttestation, targetDesc ocispec.Descrip
 		}
 	}
 	return atts
+}
+
+func notationSBOMCandidates(ctx context.Context, repo *orasremote.Repository, targetDesc ocispec.Descriptor) ([]ocispec.Descriptor, error) {
+	var results []ocispec.Descriptor
+	if err := repo.Referrers(ctx, targetDesc, "", func(referrers []ocispec.Descriptor) error {
+		for _, referrer := range referrers {
+			if isSBOMArtifactType(referrer.ArtifactType) {
+				results = append(results, referrer)
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func fetchSBOMArtifactPayload(ctx context.Context, repo *orasremote.Repository, desc ocispec.Descriptor) ([]byte, string, error) {
+	rc, err := repo.Fetch(ctx, desc)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rc.Close()
+
+	manifestBytes, err := io.ReadAll(rc)
+	if err != nil {
+		return nil, "", err
+	}
+
+	var manifest ocispec.Manifest
+	if err := json.Unmarshal(manifestBytes, &manifest); err == nil && len(manifest.Layers) > 0 {
+		for _, layer := range manifest.Layers {
+			payload, err := content.FetchAll(ctx, repo, layer)
+			if err == nil && len(payload) > 0 {
+				return payload, layer.MediaType, nil
+			}
+		}
+	}
+
+	var artifact struct {
+		ArtifactType string               `json:"artifactType"`
+		Blobs        []ocispec.Descriptor `json:"blobs,omitempty"`
+	}
+	if err := json.Unmarshal(manifestBytes, &artifact); err == nil && len(artifact.Blobs) > 0 {
+		for _, blob := range artifact.Blobs {
+			payload, err := content.FetchAll(ctx, repo, blob)
+			if err == nil && len(payload) > 0 {
+				return payload, blob.MediaType, nil
+			}
+		}
+	}
+
+	return nil, "", fmt.Errorf("notation sbom artifact %s has no readable payload", desc.Digest.String())
+}
+
+func isSBOMArtifactType(artifactType string) bool {
+	artifactType = strings.ToLower(strings.TrimSpace(artifactType))
+	switch artifactType {
+	case "", notationregistry.ArtifactTypeNotation:
+		return false
+	case "application/spdx+json",
+		"application/spdx-json",
+		"application/vnd.cyclonedx+json",
+		"application/vnd.cyclonedx+xml",
+		"application/vnd.syft+json":
+		return true
+	default:
+		return strings.Contains(artifactType, "spdx") ||
+			strings.Contains(artifactType, "cyclonedx") ||
+			strings.Contains(artifactType, "sbom")
+	}
 }
 
 func notationCertSubjectIssuer(chain []*x509.Certificate) (string, string) {
