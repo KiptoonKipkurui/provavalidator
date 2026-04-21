@@ -1,5 +1,7 @@
 package attestation
 
+import "github.com/in-toto/in-toto-golang/in_toto"
+
 type VerifiedAttestation struct {
 	ImageRef string `json:"image_ref,omitempty"`
 
@@ -28,4 +30,9 @@ type VerificationReport struct {
 	Error         string                `json:"error,omitempty"`
 	Attestations  []VerifiedAttestation `json:"attestations,omitempty"`
 	SigningMethod string                `json:"signing_method,omitempty"`
+}
+
+type VerifiedStatement struct {
+	Attestation VerifiedAttestation
+	Statement   *in_toto.Statement
 }
