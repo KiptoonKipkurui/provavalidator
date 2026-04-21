@@ -34,6 +34,20 @@ import (
 
 // verifyWithCosign verifies attestations attached to an image reference
 func verifyWithCosign(ctx context.Context, ref name.Reference, cfg *registryauth.Config) ([]VerifiedAttestation, error) {
+	statements, err := verifyWithCosignStatements(ctx, ref, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]VerifiedAttestation, 0, len(statements))
+	for _, statement := range statements {
+		results = append(results, statement.Attestation)
+	}
+
+	return results, nil
+}
+
+func verifyWithCosignStatements(ctx context.Context, ref name.Reference, cfg *registryauth.Config) ([]VerifiedStatement, error) {
 	// resolve registry authentication
 	keychain, _, err := registryauth.KeyChainForImage(cfg, ref.Name())
 
@@ -69,7 +83,7 @@ func verifyWithCosign(ctx context.Context, ref name.Reference, cfg *registryauth
 
 	if err != nil {
 		if isBundleCompatibilityError(err) {
-			compatChecked, compatErr := verifyWithBundleCompatibility(ctx, ref, cfg)
+			compatChecked, compatErr := verifyWithBundleCompatibilityStatements(ctx, ref, cfg)
 			if compatErr == nil && len(compatChecked) > 0 {
 				return compatChecked, nil
 			}
@@ -79,7 +93,7 @@ func verifyWithCosign(ctx context.Context, ref name.Reference, cfg *registryauth
 	if len(checked) == 0 {
 		return nil, fmt.Errorf("no verified attestations found")
 	}
-	var results = make([]VerifiedAttestation, 0, len(checked))
+	results := make([]VerifiedStatement, 0, len(checked))
 
 	for _, sig := range checked {
 		cert, _ := sig.Cert() // cert may be nil for some verification modes
@@ -91,15 +105,18 @@ func verifyWithCosign(ctx context.Context, ref name.Reference, cfg *registryauth
 		}
 		bundle, _ := sig.Bundle()
 
-		results = append(results, VerifiedAttestation{
-			Subject:           subject,
-			Issuer:            issuer,
-			RekorEntryPresent: bundle != nil,
-			ImageDigest:       subjectDigest(statement.Subject),
-			PredicateType:     statement.PredicateType,
-			SourceRepo:        extractSourceRepo(predicateMap(statement.Predicate)),
-			BuilderID:         extractBuilderID(predicateMap(statement.Predicate)),
-			WorkflowRef:       extractWorkflowRef(predicateMap(statement.Predicate)),
+		results = append(results, VerifiedStatement{
+			Attestation: VerifiedAttestation{
+				Subject:           subject,
+				Issuer:            issuer,
+				RekorEntryPresent: bundle != nil,
+				ImageDigest:       subjectDigest(statement.Subject),
+				PredicateType:     statement.PredicateType,
+				SourceRepo:        extractSourceRepo(predicateMap(statement.Predicate)),
+				BuilderID:         extractBuilderID(predicateMap(statement.Predicate)),
+				WorkflowRef:       extractWorkflowRef(predicateMap(statement.Predicate)),
+			},
+			Statement: statement,
 		})
 	}
 	return results, nil
@@ -334,7 +351,7 @@ func predicateMap(predicate interface{}) map[string]interface{} {
 	return m
 }
 
-func verifyWithBundleCompatibility(ctx context.Context, ref name.Reference, cfg *registryauth.Config) ([]VerifiedAttestation, error) {
+func verifyWithBundleCompatibilityStatements(ctx context.Context, ref name.Reference, cfg *registryauth.Config) ([]VerifiedStatement, error) {
 	layers, err := discoverSignatureLayers(ctx, ref, cfg)
 	if err != nil {
 		return nil, err
@@ -343,7 +360,7 @@ func verifyWithBundleCompatibility(ctx context.Context, ref name.Reference, cfg 
 		return nil, nil
 	}
 
-	results := make([]VerifiedAttestation, 0, len(layers))
+	results := make([]VerifiedStatement, 0, len(layers))
 	for _, sig := range layers {
 		if err := verifyCompatibleBundle(ctx, sig); err != nil {
 			return nil, err
@@ -357,15 +374,18 @@ func verifyWithBundleCompatibility(ctx context.Context, ref name.Reference, cfg 
 		}
 		bundle, _ := sig.Bundle()
 
-		results = append(results, VerifiedAttestation{
-			Subject:           subject,
-			Issuer:            issuer,
-			RekorEntryPresent: bundle != nil,
-			ImageDigest:       subjectDigest(statement.Subject),
-			PredicateType:     statement.PredicateType,
-			SourceRepo:        extractSourceRepo(predicateMap(statement.Predicate)),
-			BuilderID:         extractBuilderID(predicateMap(statement.Predicate)),
-			WorkflowRef:       extractWorkflowRef(predicateMap(statement.Predicate)),
+		results = append(results, VerifiedStatement{
+			Attestation: VerifiedAttestation{
+				Subject:           subject,
+				Issuer:            issuer,
+				RekorEntryPresent: bundle != nil,
+				ImageDigest:       subjectDigest(statement.Subject),
+				PredicateType:     statement.PredicateType,
+				SourceRepo:        extractSourceRepo(predicateMap(statement.Predicate)),
+				BuilderID:         extractBuilderID(predicateMap(statement.Predicate)),
+				WorkflowRef:       extractWorkflowRef(predicateMap(statement.Predicate)),
+			},
+			Statement: statement,
 		})
 	}
 
