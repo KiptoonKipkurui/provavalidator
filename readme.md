@@ -39,9 +39,9 @@ It is designed to run inside CI/CD (especially GitHub Actions) and act as a **po
 
 ### 2. Software Bill of Materials (SBOM)
 - Parses CycloneDX and SPDX SBOMs
-- Prefers **signed SBOM attestations**
-- Falls back to locally generated SBOMs when none are published
-- Normalizes all formats into a stable internal model
+- Currently generates SBOMs locally with **Syft** during image checks
+- Normalizes decoded SBOM content into a stable internal model
+- Signed SBOM attestation resolution is planned but not implemented yet
 
 ### 3. Vulnerabilities
 - Correlates SBOM packages with **OSV**
@@ -70,7 +70,7 @@ It is designed to run inside CI/CD (especially GitHub Actions) and act as a **po
 
 Container Image
 ├─ Provenance (attestations)
-├─ SBOM (attested or generated)
+├─ SBOM (currently generated locally)
 ├─ Layer DiffIDs
 └─ Packages
 ↓
