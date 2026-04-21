@@ -1,0 +1,8 @@
+FROM alpine:3.20
+
+WORKDIR /app
+
+COPY config/default.conf /etc/layer-drift-demo.conf
+COPY app.txt /app/app.txt
+
+CMD ["sh", "-c", "echo reordered-layer image && cat /app/app.txt && sleep 3600"]
