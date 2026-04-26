@@ -7,7 +7,14 @@ import (
 	"testing"
 
 	"github.com/kiptoonkipkurui/provavalidator/pkg/attestation"
+	"github.com/kiptoonkipkurui/provavalidator/pkg/runtimecfg"
 )
+
+func lowDiskGuardTestContext() context.Context {
+	cfg := runtimecfg.Default()
+	cfg.MinFreeBytes = 1
+	return WithRuntimeConfig(context.Background(), cfg)
+}
 
 func TestExtractSBOM_PrefersVerifiedAttestation(t *testing.T) {
 	originalExtract := extractAttestedSBOM
@@ -30,7 +37,7 @@ func TestExtractSBOM_PrefersVerifiedAttestation(t *testing.T) {
 		return nil, nil
 	}
 
-	resolved, err := ExtractSBOM(context.Background(), "example.com/acme/app:1.0.0")
+	resolved, err := ExtractSBOM(lowDiskGuardTestContext(), "example.com/acme/app:1.0.0")
 	if err != nil {
 		t.Fatalf("ExtractSBOM returned error: %v", err)
 	}
@@ -70,7 +77,7 @@ func TestExtractSBOM_FallsBackWhenSignedSBOMMissing(t *testing.T) {
 		return expected, nil
 	}
 
-	resolved, err := ExtractSBOM(context.Background(), "example.com/acme/app:1.0.0")
+	resolved, err := ExtractSBOM(lowDiskGuardTestContext(), "example.com/acme/app:1.0.0")
 	if err != nil {
 		t.Fatalf("ExtractSBOM returned error: %v", err)
 	}
@@ -101,7 +108,7 @@ func TestExtractSBOM_FallsBackWhenAttestedPayloadCannotBeDecoded(t *testing.T) {
 		return expected, nil
 	}
 
-	resolved, err := ExtractSBOM(context.Background(), "example.com/acme/app:1.0.0")
+	resolved, err := ExtractSBOM(lowDiskGuardTestContext(), "example.com/acme/app:1.0.0")
 	if err != nil {
 		t.Fatalf("ExtractSBOM returned error: %v", err)
 	}
