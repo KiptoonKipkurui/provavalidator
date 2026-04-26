@@ -1,25 +1,101 @@
-# Docker Hub official images
+# Docker Hub official images: operating systems and minimal bases
 ubuntu:latest
 debian:stable-slim
 alpine:latest
 busybox:latest
+rockylinux:9
+amazonlinux:2023
+oraclelinux:9
+fedora:latest
+bash:latest
+
+# Docker Hub official images: web servers, proxies, and networking
 nginx:latest
+httpd:latest
+traefik:latest
+caddy:latest
+haproxy:latest
+varnish:latest
+
+# Docker Hub official images: databases, caches, and messaging
 redis:latest
 postgres:latest
+mysql:latest
+mariadb:latest
+mongo:latest
+memcached:latest
+cassandra:latest
+rabbitmq:latest
+nats:latest
+neo4j:latest
+influxdb:latest
+
+# Docker Hub official images: language runtimes and build tools
 python:3.12-slim
 golang:1.24
 node:22-alpine
+eclipse-temurin:21
+php:8.3-cli
+ruby:3.3
+rust:latest
+maven:latest
+gradle:latest
+composer:latest
+perl:latest
+docker:latest
+docker:dind
 
-# Docker Hub public images from security-focused publishers
+# Docker Hub official images: application platforms and search
+wordpress:latest
+drupal:latest
+tomcat:latest
+telegraf:latest
+
+# Elastic Container Registry
+docker.elastic.co/elasticsearch/elasticsearch:8.18.0
+docker.elastic.co/kibana/kibana:8.18.0
+docker.elastic.co/logstash/logstash:8.18.0
+
+# Docker Hub public images: observability and monitoring
+grafana/grafana:latest
+prom/prometheus:latest
+prom/node-exporter:latest
+prom/alertmanager:latest
+otel/opentelemetry-collector:latest
+jaegertracing/all-in-one:latest
+
+# Docker Hub public images: security-focused publishers and tools
 aquasec/kube-bench:latest
 aquasec/kube-hunter:latest
+aquasec/trivy:latest
 falcosecurity/falco:latest
+falcosecurity/falcosidekick:latest
+anchore/grype:latest
+anchore/syft:latest
+openpolicyagent/opa:latest
+
+# Docker Hub public images: DevOps, CI/CD, and infrastructure tooling
+jenkins/jenkins:lts
+alpine/git:latest
+hashicorp/terraform:latest
+hashicorp/vault:latest
+sonarqube:community
+
+# Docker Hub public images: Bitnami and common production charts
+bitnami/kubectl:latest
+bitnami/kube-state-metrics:latest
+bitnami/external-dns:latest
+bitnami/nginx:latest
+bitnami/postgresql:latest
+bitnami/redis:latest
 
 # Google Container Registry / Distroless
 gcr.io/distroless/static-debian12:latest
 gcr.io/distroless/base-debian12:latest
 gcr.io/distroless/cc-debian12:latest
 gcr.io/distroless/java21-debian12:latest
+gcr.io/distroless/python3-debian12:latest
+gcr.io/distroless/nodejs22-debian12:latest
 
 # Chainguard Registry
 cgr.dev/chainguard/wolfi-base:latest
@@ -27,25 +103,57 @@ cgr.dev/chainguard/nginx:latest
 cgr.dev/chainguard/python:latest
 cgr.dev/chainguard/git:latest
 cgr.dev/chainguard/cosign:latest
+cgr.dev/chainguard/go:latest
+cgr.dev/chainguard/node:latest
+cgr.dev/chainguard/jre:latest
+cgr.dev/chainguard/postgres:latest
+cgr.dev/chainguard/redis:latest
 
-# GitHub Container Registry
-ghcr.io/open-policy-agent/opa:latest
-ghcr.io/prometheus/node-exporter:latest
+# GitHub Container Registry: policy, security, and supply-chain tools
 ghcr.io/sigstore/cosign/cosign:latest
+ghcr.io/sigstore/rekor/rekor-server:v1.5.0
 ghcr.io/aquasecurity/trivy:latest
 ghcr.io/anchore/syft:latest
 ghcr.io/anchore/grype:latest
 
+# GitHub Container Registry: Kubernetes and platform projects
+ghcr.io/kyverno/kyverno:latest
+ghcr.io/kyverno/background-controller:latest
+ghcr.io/kyverno/cleanup-controller:latest
+ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector:latest
+
+# Kubernetes official registry
+registry.k8s.io/pause:3.10
+registry.k8s.io/coredns/coredns:v1.11.3
+registry.k8s.io/kube-state-metrics/kube-state-metrics:v2.15.0
+registry.k8s.io/ingress-nginx/controller:v1.13.1
+registry.k8s.io/autoscaling/cluster-autoscaler:v1.34.0
+registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.14.0
+registry.k8s.io/sig-storage/csi-provisioner:v5.3.0
+
 # Amazon ECR Public
 public.ecr.aws/docker/library/ubuntu:latest
+public.ecr.aws/docker/library/nginx:latest
+public.ecr.aws/docker/library/redis:latest
 public.ecr.aws/amazonlinux/amazonlinux:latest
-public.ecr.aws/karpenter/controller:latest
+public.ecr.aws/aws-cli/aws-cli:latest
+public.ecr.aws/lambda/python:3.12
+public.ecr.aws/lambda/nodejs:22
+public.ecr.aws/karpenter/controller:1.5.0
 
 # Quay
 quay.io/prometheus/prometheus:latest
-quay.io/brancz/kube-rbac-proxy:latest
-quay.io/jetstack/cert-manager-controller:latest
+quay.io/prometheus/alertmanager:latest
+quay.io/prometheus/node-exporter:master-distroless
+quay.io/jetstack/cert-manager-controller:v1.20.2
+quay.io/coreos/etcd:v3.6.10
+quay.io/argoproj/argocd:latest
+quay.io/keycloak/keycloak:latest
 
 # Microsoft Container Registry
 mcr.microsoft.com/azure-cli:latest
 mcr.microsoft.com/powershell:latest
+mcr.microsoft.com/dotnet/runtime:8.0
+mcr.microsoft.com/dotnet/aspnet:8.0
+mcr.microsoft.com/dotnet/sdk:8.0
+mcr.microsoft.com/windows/nanoserver:ltsc2022
