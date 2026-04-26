@@ -22,6 +22,12 @@ func TestRuntimeConfigFromContext_Defaults(t *testing.T) {
 	if cfg.CleanupTempOnSuccess == nil || !*cfg.CleanupTempOnSuccess {
 		t.Fatalf("expected cleanupTempOnSuccess to default true")
 	}
+	if cfg.CleanupTempOnFailure == nil || !*cfg.CleanupTempOnFailure {
+		t.Fatalf("expected cleanupTempOnFailure to default true")
+	}
+	if cfg.MinFreeBytes != 0 {
+		t.Fatalf("unexpected min free bytes default: %d", cfg.MinFreeBytes)
+	}
 }
 
 func TestResolveRuntimeConfig_RelativePaths(t *testing.T) {
@@ -31,6 +37,8 @@ func TestResolveRuntimeConfig_RelativePaths(t *testing.T) {
 		TempDir:              ".cache/provavalidator/tmp",
 		SyftCacheDir:         ".cache/provavalidator/syft",
 		CleanupTempOnSuccess: &cleanup,
+		CleanupTempOnFailure: &cleanup,
+		MinFreeBytes:         123,
 	}, cwd)
 
 	if resolved.tempRoot != filepath.Join(cwd, ".cache/provavalidator/tmp") {
@@ -44,6 +52,12 @@ func TestResolveRuntimeConfig_RelativePaths(t *testing.T) {
 	}
 	if resolved.cleanupTempOnSuccess {
 		t.Fatalf("expected cleanup on success to be false")
+	}
+	if resolved.cleanupTempOnFailure {
+		t.Fatalf("expected cleanup on failure to be false")
+	}
+	if resolved.minFreeBytes != 123 {
+		t.Fatalf("unexpected min free bytes: %d", resolved.minFreeBytes)
 	}
 }
 
@@ -111,7 +125,10 @@ func TestWithRuntimeEnvironment_KeepsTempDirOnFailure(t *testing.T) {
 	}
 	defer func() { _ = os.Chdir(originalWD) }()
 
-	ctx := WithRuntimeConfig(context.Background(), runtimecfg.Default())
+	keepFailedScratch := false
+	cfg := runtimecfg.Default()
+	cfg.CleanupTempOnFailure = &keepFailedScratch
+	ctx := WithRuntimeConfig(context.Background(), cfg)
 
 	var scratchDir string
 	expectedErr := errors.New("boom")
@@ -125,5 +142,41 @@ func TestWithRuntimeEnvironment_KeepsTempDirOnFailure(t *testing.T) {
 
 	if _, statErr := os.Stat(scratchDir); statErr != nil {
 		t.Fatalf("expected scratch dir to remain after failure: %v", statErr)
+	}
+}
+
+func TestWithRuntimeEnvironment_CleansTempDirOnFailureByDefault(t *testing.T) {
+	originalWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	root := t.TempDir()
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(originalWD) }()
+
+	ctx := WithRuntimeConfig(context.Background(), runtimecfg.Default())
+
+	var scratchDir string
+	expectedErr := errors.New("boom")
+	_, err = withRuntimeEnvironment(ctx, func(_ context.Context, _ resolvedRuntimeConfig) (*ResolvedSBOM, error) {
+		scratchDir = os.Getenv("TMPDIR")
+		return nil, expectedErr
+	})
+	if !errors.Is(err, expectedErr) {
+		t.Fatalf("expected error %v, got %v", expectedErr, err)
+	}
+
+	if _, statErr := os.Stat(scratchDir); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("expected scratch dir to be removed after failure, got %v", statErr)
+	}
+}
+
+func TestEnsureMinFreeSpace_ReturnsErrorWhenThresholdExceedsAvailableSpace(t *testing.T) {
+	err := ensureMinFreeSpace(t.TempDir(), 1<<62)
+	if err == nil {
+		t.Fatal("expected low disk error")
 	}
 }

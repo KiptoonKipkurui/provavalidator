@@ -17,6 +17,8 @@ type resolvedRuntimeConfig struct {
 	syftCacheDir         string
 	xdgCacheHome         string
 	cleanupTempOnSuccess bool
+	cleanupTempOnFailure bool
+	minFreeBytes         int64
 }
 
 var runtimeEnvMu sync.Mutex
@@ -41,6 +43,8 @@ func resolveRuntimeConfig(cfg runtimecfg.Config, cwd string) resolvedRuntimeConf
 		syftCacheDir:         resolveRuntimePath(cwd, cfg.SyftCacheDir),
 		xdgCacheHome:         xdgCacheHome(cfg.SyftCacheDir, cwd),
 		cleanupTempOnSuccess: cfg.CleanupTempOnSuccess == nil || *cfg.CleanupTempOnSuccess,
+		cleanupTempOnFailure: cfg.CleanupTempOnFailure == nil || *cfg.CleanupTempOnFailure,
+		minFreeBytes:         cfg.MinFreeBytes,
 	}
 }
 
@@ -76,6 +80,9 @@ func withRuntimeEnvironment(ctx context.Context, fn func(context.Context, resolv
 	if err := os.MkdirAll(resolved.xdgCacheHome, 0o755); err != nil {
 		return nil, fmt.Errorf("configure sbom runtime xdg cache root: %w", err)
 	}
+	if err := ensureMinFreeSpace(resolved.tempRoot, resolved.minFreeBytes); err != nil {
+		return nil, err
+	}
 
 	scratchDir, err := os.MkdirTemp(resolved.tempRoot, "run-")
 	if err != nil {
@@ -102,12 +109,50 @@ func withRuntimeEnvironment(ctx context.Context, fn func(context.Context, resolv
 	}
 
 	sbomDoc, runErr := fn(ctx, resolved)
-	if runErr == nil && resolved.cleanupTempOnSuccess {
-		if cleanupErr := os.RemoveAll(scratchDir); cleanupErr != nil {
+	shouldCleanup := runErr == nil && resolved.cleanupTempOnSuccess
+	if runErr != nil && resolved.cleanupTempOnFailure {
+		shouldCleanup = true
+	}
+	if shouldCleanup {
+		if cleanupErr := os.RemoveAll(scratchDir); cleanupErr != nil && runErr == nil {
 			return nil, fmt.Errorf("cleanup sbom runtime temp dir: %w", cleanupErr)
 		}
 	}
 	return sbomDoc, runErr
+}
+
+func ensureMinFreeSpace(path string, minFreeBytes int64) error {
+	if minFreeBytes <= 0 {
+		return nil
+	}
+
+	freeBytes, ok, err := freeSpaceBytes(path)
+	if err != nil {
+		return fmt.Errorf("check sbom runtime free space: %w", err)
+	}
+	if !ok {
+		return nil
+	}
+	if freeBytes < uint64(minFreeBytes) {
+		return fmt.Errorf("sbom runtime temp root %q has %s free, below required minimum %s", path, humanBytes(freeBytes), humanBytes(uint64(minFreeBytes)))
+	}
+	return nil
+}
+
+func humanBytes(bytes uint64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%dB", bytes)
+	}
+
+	value := float64(bytes)
+	for _, suffix := range []string{"KiB", "MiB", "GiB", "TiB", "PiB"} {
+		value /= unit
+		if value < unit {
+			return fmt.Sprintf("%.1f%s", value, suffix)
+		}
+	}
+	return fmt.Sprintf("%.1fEiB", value/unit)
 }
 
 func captureEnv(keys ...string) func() {
