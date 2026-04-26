@@ -11,6 +11,10 @@ runtime:
   tempDir: .cache/provavalidator/tmp
   syftCacheDir: .cache/provavalidator/syft
   cleanupTempOnSuccess: true
+  cleanupTempOnFailure: true
+  # Optional: refuse SBOM extraction when the temp filesystem is below a
+  # minimum amount of free space. Disabled by default.
+  # minFreeBytes: 10737418240
 
 registries:
   ghcr.io:
@@ -21,7 +25,7 @@ registries:
   quay.io:
     auth:
       type: basic_or_anonymous
-      username: QUAY_USERNAME
+      usernameEnv: QUAY_USERNAME
       passwordEnv: QUAY_PASSWORD
 
   public.ecr.aws:
