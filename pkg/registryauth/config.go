@@ -21,6 +21,7 @@ type RegistryEntry struct {
 type AuthConfig struct {
 	Type        string `yaml:"type"` //docker|basic|token|anonymous
 	Username    string `yaml:"username,omitempty"`
+	UsernameEnv string `yaml:"usernameEnv,omitempty"`
 	Password    string `yaml:"password,omitempty"`
 	PasswordEnv string `yaml:"passwordEnv,omitempty"`
 	Token       string `yaml:"token,omitempty"`
@@ -71,15 +72,15 @@ func validateEntry(host string, entry RegistryEntry) error {
 	case "docker", "anonymous", "docker_or_anonymous":
 		return nil
 	case "basic", "basic_or_anonymous":
-		if entry.Auth.Username == "" {
+		if entry.Auth.Username == "" && entry.Auth.UsernameEnv == "" {
 			return fmt.Errorf("registry %q: auth.type=basic requires auth.username", host)
 		}
-		if entry.Auth.Password == "" && entry.Auth.PasswordEnv == "" {
+		if t == "basic" && entry.Auth.Password == "" && entry.Auth.PasswordEnv == "" {
 			return fmt.Errorf("registry %q: auth.type=basic requires auth.password or auth.passwordEnv", host)
 		}
 		return nil
 	case "token", "token_or_anonymous":
-		if entry.Auth.Token == "" && entry.Auth.TokenEnv == "" {
+		if t == "token" && entry.Auth.Token == "" && entry.Auth.TokenEnv == "" {
 			return fmt.Errorf("registry %q: auth.type=token requires auth.token or auth.tokenEnv", host)
 		}
 		return nil
@@ -95,18 +96,31 @@ func (a AuthConfig) resolveSecret() (username, password string, isAnon bool, err
 		// handled elsewhere
 		return "", "", false, nil
 	case "basic", "basic_or_anonymous":
+		user := a.Username
+		if user == "" && a.UsernameEnv != "" {
+			user = os.Getenv(a.UsernameEnv)
+		}
 		pw := a.Password
 		if pw == "" && a.PasswordEnv != "" {
 			pw = os.Getenv(a.PasswordEnv)
 		}
+		if a.Type == "basic_or_anonymous" && (user == "" || pw == "") {
+			return "", "", true, nil
+		}
+		if user == "" {
+			return "", "", false, fmt.Errorf("basic auth: missing username (username or usernameEnv)")
+		}
 		if pw == "" {
 			return "", "", false, fmt.Errorf("basic auth: missing password (password or passwordEnv)")
 		}
-		return a.Username, pw, false, nil
+		return user, pw, false, nil
 	case "token", "token_or_anonymous":
 		tok := a.Token
 		if tok == "" && a.TokenEnv != "" {
 			tok = os.Getenv(a.TokenEnv)
+		}
+		if a.Type == "token_or_anonymous" && tok == "" {
+			return "", "", true, nil
 		}
 		if tok == "" {
 			return "", "", false, fmt.Errorf("token auth: missing token (token or tokenEnv)")
