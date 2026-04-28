@@ -18,9 +18,11 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "provavalidator",
-	Short: "A tool to validate software supply chain provenance",
-	Long:  `Provavalidator is a command-line tool that helps validate the authenticity and integrity of software supply chain provenance.`,
+	Use:           "provavalidator",
+	Short:         "A tool to validate software supply chain provenance",
+	Long:          `Provavalidator is a command-line tool that helps validate the authenticity and integrity of software supply chain provenance.`,
+	SilenceUsage:  true,
+	SilenceErrors: true,
 
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := registryauth.LoadConfig(authConfigPath)
