@@ -43,8 +43,14 @@ func InspectImageAttestations(ctx context.Context, image string, authCfg *regist
 		classified := classifyVerificationError(err)
 		if shouldTryNotationFallback(classified) {
 			notationReport, notationErr := inspectWithNotation(ctx, image, authCfg)
-			if notationReport != nil && (notationReport.Verified || notationReport.Discovered) {
-				return notationReport, notationErr
+			if notationReport != nil {
+				notationStatus := verificationStatus(notationErr)
+				if notationReport.Verified || notationReport.Discovered {
+					return notationReport, notationErr
+				}
+				if verificationStatus(classified) == "not_found" && notationStatus != "not_found" {
+					return notationReport, notationErr
+				}
 			}
 		}
 		discovered, discoverErr := discoverWithCosign(ctx, ref, authCfg)
