@@ -8,7 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/go-openapi/runtime"
 	httptransport "github.com/go-openapi/runtime/client"
@@ -32,6 +35,8 @@ import (
 	rekord_v001 "github.com/sigstore/rekor/pkg/types/rekord/v0.0.1"
 )
 
+var sigstoreCacheEnvOnce sync.Once
+
 // verifyWithCosign verifies attestations attached to an image reference
 func verifyWithCosign(ctx context.Context, ref name.Reference, cfg *registryauth.Config) ([]VerifiedAttestation, error) {
 	statements, err := verifyWithCosignStatements(ctx, ref, cfg)
@@ -48,6 +53,8 @@ func verifyWithCosign(ctx context.Context, ref name.Reference, cfg *registryauth
 }
 
 func verifyWithCosignStatements(ctx context.Context, ref name.Reference, cfg *registryauth.Config) ([]VerifiedStatement, error) {
+	ensureSigstoreCacheEnv()
+
 	// resolve registry authentication
 	keychain, _, err := registryauth.KeyChainForImage(cfg, ref.Name())
 
@@ -120,6 +127,21 @@ func verifyWithCosignStatements(ctx context.Context, ref name.Reference, cfg *re
 		})
 	}
 	return results, nil
+}
+
+func ensureSigstoreCacheEnv() {
+	sigstoreCacheEnvOnce.Do(func() {
+		if os.Getenv("TUF_ROOT") != "" {
+			return
+		}
+
+		cacheDir := filepath.Join(os.TempDir(), "provavalidator-sigstore")
+		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+			return
+		}
+
+		_ = os.Setenv("TUF_ROOT", cacheDir)
+	})
 }
 
 func discoverWithCosign(ctx context.Context, ref name.Reference, cfg *registryauth.Config) ([]VerifiedAttestation, error) {
